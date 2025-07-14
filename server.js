@@ -5,7 +5,6 @@ const { Server } = require('socket.io');
 
 const app = express();
 
-// ✅ Enable CORS for your InfinityFree domain
 app.use(cors({
   origin: 'https://thebate.ct.ws',
   methods: ['GET', 'POST'],
@@ -37,6 +36,14 @@ io.on('connection', socket => {
 
     socket.on('ice-candidate', ({ to, candidate }) => {
       socket.to(to).emit('ice-candidate', { from: socket.id, candidate });
+    });
+
+    // Broadcast active speaker to room
+    socket.on('active-speaker', activeSpeakerId => {
+      const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
+      rooms.forEach(room => {
+        socket.to(room).emit('active-speaker', activeSpeakerId);
+      });
     });
 
     socket.on('disconnect', () => {
