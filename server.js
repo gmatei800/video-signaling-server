@@ -1,35 +1,51 @@
 const express = require('express');
+const http = require('http');
+const cors = require('cors');
+const { Server } = require('socket.io');
+
 const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http);
 
-const PORT = process.env.PORT || 3000;
+// ✅ Enable CORS for your InfinityFree domain
+app.use(cors({
+  origin: 'https://thebate.ct.ws',
+  methods: ['GET', 'POST'],
+  credentials: true
+}));
 
-app.use(express.static('public'));
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: 'https://thebate.ct.ws',
+    methods: ['GET', 'POST']
+  }
+});
 
 io.on('connection', socket => {
-  socket.on('join-room', (roomId, userId) => {
-    socket.join(roomId);
-    socket.to(roomId).emit('user-connected', userId);
+  console.log('User connected:', socket.id);
+
+  socket.on('join-room', room => {
+    socket.join(room);
+    socket.to(room).emit('user-joined', socket.id);
+
+    socket.on('offer', ({ to, offer }) => {
+      socket.to(to).emit('offer', { from: socket.id, offer });
+    });
+
+    socket.on('answer', ({ to, answer }) => {
+      socket.to(to).emit('answer', { from: socket.id, answer });
+    });
+
+    socket.on('ice-candidate', ({ to, candidate }) => {
+      socket.to(to).emit('ice-candidate', { from: socket.id, candidate });
+    });
 
     socket.on('disconnect', () => {
-      socket.to(roomId).emit('user-disconnected', userId);
-    });
-
-    socket.on('offer', (id, description) => {
-      socket.to(id).emit('offer', socket.id, description);
-    });
-
-    socket.on('answer', (id, description) => {
-      socket.to(id).emit('answer', socket.id, description);
-    });
-
-    socket.on('ice-candidate', (id, candidate) => {
-      socket.to(id).emit('ice-candidate', socket.id, candidate);
+      socket.to(room).emit('user-left', socket.id);
     });
   });
 });
 
-http.listen(PORT, () => {
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
