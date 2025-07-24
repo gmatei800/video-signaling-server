@@ -1,30 +1,16 @@
-const express = require('express');
-const http = require('http');
-const cors = require('cors');
-const { Server } = require('socket.io');
-
-const app = express();
-
-app.use(cors({
-  origin: 'https://thebate.ct.ws',
-  methods: ['GET', 'POST'],
-  credentials: true
-}));
-
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: 'https://thebate.ct.ws',
-    methods: ['GET', 'POST']
-  }
-});
+const rooms = {};
 
 io.on('connection', socket => {
   console.log('User connected:', socket.id);
 
   socket.on('join-room', room => {
     socket.join(room);
-    socket.to(room).emit('user-joined', socket.id);
+    if (!rooms[room]) rooms[room] = [];
+    rooms[room].push(socket.id);
+
+    // Send back list of all existing users in room (excluding the new one)
+    const otherUsers = rooms[room].filter(id => id !== socket.id);
+    socket.emit('user-list', otherUsers);
 
     socket.on('offer', ({ to, offer }) => {
       socket.to(to).emit('offer', { from: socket.id, offer });
@@ -38,21 +24,12 @@ io.on('connection', socket => {
       socket.to(to).emit('ice-candidate', { from: socket.id, candidate });
     });
 
-    // Broadcast active speaker to room
-    socket.on('active-speaker', activeSpeakerId => {
-      const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-      rooms.forEach(room => {
-        socket.to(room).emit('active-speaker', activeSpeakerId);
-      });
-    });
-
     socket.on('disconnect', () => {
       socket.to(room).emit('user-left', socket.id);
+      if (rooms[room]) {
+        rooms[room] = rooms[room].filter(id => id !== socket.id);
+        if (rooms[room].length === 0) delete rooms[room];
+      }
     });
   });
-});
-
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
